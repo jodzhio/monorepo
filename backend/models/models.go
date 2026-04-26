@@ -26,7 +26,7 @@ type CandidateCreateRequest struct {
 
 type AnswerRequest struct {
 	QuestionID int    `json:"question_id"`
-	AnswerText string `json:"answer_text"`
+	AnswerText string `json:"answer"`
 }
 
 type DialogStartResponse struct {
@@ -37,6 +37,7 @@ type DialogStartResponse struct {
 }
 
 type DialogQuestionResponse struct {
+	SessionID  string `json:"session_id,omitempty"`
 	QuestionID int    `json:"question_id,omitempty"`
 	Text       string `json:"text,omitempty"`
 	IsLast     bool   `json:"is_last"`
@@ -44,12 +45,13 @@ type DialogQuestionResponse struct {
 }
 
 type ScoreResponse struct {
+	CandidateID              string  `json:"candidate_id,omitempty"`
 	Score                    float64 `json:"score"`
 	ScorePercent             int     `json:"score_percent"`
 	Verdict                  string  `json:"verdict"` // "recommend_to_interview", "soft_reject_timer"
 	Recommendation           string  `json:"recommendation"`
 	Traits                   Traits  `json:"traits"`
-	RejectionTimerDays       *int    `json:"rejection_timer_days,omitempty"`
+	RejectionTimerDays       *int    `json:"rejection_timer_days"`
 	RejectionMessageTemplate string  `json:"rejection_message_template,omitempty"`
 	Status                   string  `json:"status"` // "approved", "pending_rejection"
 }
@@ -60,7 +62,7 @@ type Traits struct {
 }
 
 type QuestionItem struct {
-	ID   int    `json:"id"`
+	ID   int    `json:"question_id"`
 	Text string `json:"text"`
 }
 
@@ -75,7 +77,6 @@ type Candidate struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-// internal/models/models.go - добавь в структуру Session
 type Session struct {
 	SessionID          string
 	CandidateID        string

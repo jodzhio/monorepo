@@ -1,4 +1,3 @@
-// internal/handlers/handlers.go
 package handlers
 
 import (
@@ -7,10 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jodzhio/monorepo/llm"
-	"github.com/jodzhio/monorepo/models"
-	"github.com/jodzhio/monorepo/storage"
-	"github.com/jodzhio/monorepo/utils"
+	"github.com/jodzhio/monorepo/backend/llm"
+	"github.com/jodzhio/monorepo/backend/models"
+	"github.com/jodzhio/monorepo/backend/storage"
+	"github.com/jodzhio/monorepo/backend/utils"
 )
 
 type Handler struct {
@@ -95,13 +94,17 @@ func (h *Handler) CreateCandidateHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Формируем ответ (совместимый с OpenAPI)
+	maxQ := 0
+	if v, ok := startResp.SessionContext["max_questions"].(float64); ok {
+		maxQ = int(v)
+	}
 	response := models.DialogStartResponse{
 		SessionID: sessionID,
 		Status:    "in_progress",
 		Questions: []models.QuestionItem{
 			{ID: 1, Text: startResp.FirstQuestion},
 		},
-		MaxQuestions: 0, // неизвестно, будет определяться динамически
+		MaxQuestions: maxQ,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -130,8 +133,9 @@ func (h *Handler) GetNextQuestionHandler(w http.ResponseWriter, r *http.Request)
 
 	if session.Status != "in_progress" {
 		response := models.DialogQuestionResponse{
-			IsLast: true,
-			Status: session.Status,
+			SessionID: sessionID,
+			IsLast:    true,
+			Status:    session.Status,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
@@ -141,8 +145,9 @@ func (h *Handler) GetNextQuestionHandler(w http.ResponseWriter, r *http.Request)
 	// Если диалог пустой или закончился
 	if len(session.Dialogue) == 0 {
 		response := models.DialogQuestionResponse{
-			IsLast: true,
-			Status: "completed",
+			SessionID: sessionID,
+			IsLast:    true,
+			Status:    "completed",
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
@@ -153,6 +158,7 @@ func (h *Handler) GetNextQuestionHandler(w http.ResponseWriter, r *http.Request)
 	lastTurn := session.Dialogue[len(session.Dialogue)-1]
 
 	response := models.DialogQuestionResponse{
+		SessionID:  sessionID,
 		QuestionID: session.CurrentQuestionIdx + 1,
 		Text:       lastTurn.Content,
 		IsLast:     false,
@@ -227,9 +233,13 @@ func (h *Handler) PostAnswerHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Проверяем, завершено ли интервью
 	if nextResp.IsFinished {
-		session.Status = "completed"
+		// Помечаем сессию как «анализируется» — финальный скоринг считается отдельным
+		// вызовом, чтобы клиент мог сразу получить is_last=true и опросить /score.
+		session.Status = "analyzing"
 		if nextResp.FinalReport != nil {
 			session.Score = *nextResp.FinalReport
+			session.Score.CandidateID = candidate.CandidateID
+			session.Status = "completed"
 		}
 
 		if err := h.storage.UpdateSession(session); err != nil {
@@ -237,9 +247,15 @@ func (h *Handler) PostAnswerHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Если агент не вернул финальный отчёт в next-ответе — считаем его отдельно.
+		if nextResp.FinalReport == nil {
+			go h.computeFinalScore(sessionID)
+		}
+
 		response := models.DialogQuestionResponse{
-			IsLast: true,
-			Status: "completed",
+			SessionID: sessionID,
+			IsLast:    true,
+			Status:    session.Status,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
@@ -260,6 +276,7 @@ func (h *Handler) PostAnswerHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Возвращаем следующий вопрос
 	response := models.DialogQuestionResponse{
+		SessionID:  sessionID,
 		QuestionID: session.CurrentQuestionIdx + 1,
 		Text:       nextResp.Question,
 		IsLast:     false,
@@ -297,9 +314,10 @@ func (h *Handler) GetScoreHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if session.Status == "in_progress" {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		response := map[string]interface{}{
-			"status":  "analyzing",
+			"status":  "in_progress",
 			"message": "Interview is still in progress",
 		}
 		json.NewEncoder(w).Encode(response)
@@ -307,16 +325,40 @@ func (h *Handler) GetScoreHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if session.Status == "completed" {
+		score := session.Score
+		score.CandidateID = candidateID
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(session.Score)
+		json.NewEncoder(w).Encode(score)
 		return
 	}
 
+	// session.Status == "analyzing" — финальный отчёт ещё считается фоном
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	response := map[string]interface{}{
 		"status":  "analyzing",
 		"message": "Score is being calculated",
 	}
 	json.NewEncoder(w).Encode(response)
+}
+
+// computeFinalScore вызывает Python-агент для финального скоринга и сохраняет
+// результат в сессию. Запускается в фоне после завершения интервью.
+func (h *Handler) computeFinalScore(sessionID string) {
+	session, err := h.storage.GetSession(sessionID)
+	if err != nil {
+		return
+	}
+	candidate, err := h.storage.GetCandidate(session.CandidateID)
+	if err != nil {
+		return
+	}
+
+	score := h.llmAgent.CalculateScore(*candidate, session.Answers)
+	score.CandidateID = candidate.CandidateID
+
+	session.Score = score
+	session.Status = "completed"
+	_ = h.storage.UpdateSession(session)
 }

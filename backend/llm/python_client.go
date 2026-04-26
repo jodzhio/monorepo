@@ -1,4 +1,3 @@
-// internal/llm/python_client.go
 package llm
 
 import (
@@ -8,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jodzhio/monorepo/models"
+	"github.com/jodzhio/monorepo/backend/models"
 )
 
 type PythonAgentClient struct {

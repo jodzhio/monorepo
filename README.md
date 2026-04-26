@@ -1,37 +1,152 @@
-# AI Recruiter - Go бэкенд для HR агента
+# AI Recruiter — монорепозиторий
 
-Бэкенд сервиса для проведения автоматизированных технических интервью с кандидатами.
+Сервис автоматизированного первичного скрининга IT-кандидатов: веб-приложение
+для HR и кандидатов, Go-бэкенд с REST API и Python-агент поверх GigaChat,
+который ведёт чат и формирует финальный скоринг.
 
-## Быстрый старт
+```
+monorepo/
+├── frontend/        # React + Vite (UI для HR и форма отклика для кандидата)
+├── backend/         # Go API-сервер: сессии, маршрутизация, состояние
+├── python_agent/    # HR-агент на GigaChat (Flask-обёртка)
+├── openapi.yaml     # Контракт REST API (источник истины для всех трёх частей)
+└── README.md        # ← вы здесь
+```
 
-### Требования
-- Go 1.22+
-- Python 3.9+ (для LLM агента)
+## Архитектура
 
-### Установка и запуск
+Три независимых процесса, общающихся по HTTP:
+
+```
+┌─────────────┐    REST    ┌─────────────┐    REST     ┌──────────────────┐
+│  frontend   │ ─────────► │   backend   │ ──────────► │  python_agent    │
+│ React+Vite  │  /api/...  │   Go HTTP   │  /api/...   │  Flask + GigaChat│
+│   :5173     │ ◄───────── │    :8000    │ ◄────────── │      :5000       │
+└─────────────┘            └─────────────┘             └──────────────────┘
+```
+
+### Ключевые архитектурные решения
+
+- **Stateless фронтенд, stateful бэкенд.** Состояние сессии (история диалога,
+  контекст агента, финальный отчёт) живёт только в Go. Фронтенд хранит лишь
+  `session_id` и `candidate_id`, чтобы можно было перезагрузить вкладку без
+  потери данных. Это упрощает мобильную версию и позволяет масштабировать UI
+  независимо от агента.
+
+- **In-memory storage в бэкенде (хакатон-режим).** `backend/storage` хранит
+  кандидатов и сессии в `map` под `sync.RWMutex`. Интерфейс намеренно
+  спроектирован под лёгкую замену на Redis/PostgreSQL — поведение наружу
+  (CreateCandidate / GetSession / UpdateSession) остаётся тем же.
+
+- **Контракт ↔ один источник истины — `openapi.yaml`.** Go-структуры в
+  `backend/models` и TypeScript-типы в `frontend/src/types/api.ts` соответствуют
+  схемам из OpenAPI. Любая правка контракта должна одновременно появиться во
+  всех трёх местах.
+
+- **LLM изолирован за HTTP-границей.** Go никогда не зовёт GigaChat напрямую.
+  Это даёт три плюса: (1) можно переключаться между моделью и моком одной
+  переменной окружения `USE_MOCK`, (2) Go не зависит от Python-окружения,
+  (3) агент можно деплоить отдельно (например, на CPU-узле с прогретым
+  токеном).
+
+- **Адаптивный диалог + асинхронный финальный скоринг.** Бэкенд не возвращает
+  скор синхронно — он сразу отдаёт `is_last=true` со статусом `analyzing`,
+  а в фоне вызывает `/api/score` у агента. Фронтенд опрашивает
+  `GET /candidates/{id}/score` и получает `202 analyzing` → `200 OK` с
+  готовым отчётом. Так пользователь видит мгновенную реакцию вместо «висящего»
+  запроса с таймаутом GigaChat.
+
+- **Защита агента от плохого поведения.** Агент сам решает, когда переспросить,
+  когда проигнорировать манипуляцию и когда досрочно завершить интервью
+  (см. `python_agent/hr_agent/agent.py:_BAD_LIMIT`). Это поведение прозрачно
+  для бэкенда — он только сохраняет `session_context` и передаёт обратно.
+
+### Поток одного интервью
+
+1. **Кандидат** заполняет форму на `/apply` →
+   `POST /api/candidates` (Go).
+2. **Go** генерирует `candidate_id`/`session_id`, зовёт
+   `POST /api/interview/start` (Python) → получает приветствие + первый вопрос →
+   возвращает фронту `DialogStartResponse` с первым вопросом.
+3. На каждый ответ кандидат шлёт `POST /api/dialog/{session_id}/answer`. Go
+   зовёт `POST /api/interview/next`, агент решает действие
+   (`ask_next` / `clarify` / `redirect` / `finish`) и возвращает следующий
+   вопрос или флаг завершения.
+4. Когда агент возвращает `is_finished=true`, Go отвечает фронту
+   `is_last=true, status="analyzing"` и **в фоне** считает финальный скоринг
+   через `POST /api/score`.
+5. Фронт опрашивает `GET /api/candidates/{id}/score` каждые 2.5 сек до получения
+   200 OK с `ScoreResponse`.
+
+## Контракты API
+
+Полная спецификация — в `openapi.yaml`. Кратко:
+
+| Метод | Путь                                  | Назначение                              |
+|-------|---------------------------------------|------------------------------------------|
+| POST  | `/api/candidates`                     | Создать кандидата + начать сессию       |
+| GET   | `/api/dialog/{session_id}/next`       | Получить текущий вопрос                  |
+| POST  | `/api/dialog/{session_id}/answer`     | Отправить ответ → получить следующий    |
+| GET   | `/api/candidates/{candidate_id}/score`| Финальный скоринг (200) или 202 ожидает |
+
+Внутренние эндпоинты Python-агента (Go ↔ агент):
+
+| Метод | Путь                          | Назначение                                  |
+|-------|-------------------------------|---------------------------------------------|
+| POST  | `/api/interview/start`        | Анализ анкеты + первый вопрос                |
+| POST  | `/api/interview/next`         | Следующая реплика HR / завершение            |
+| POST  | `/api/score`                  | Финальный скоринг по списку Q&A              |
+| GET   | `/api/health`                 | Проверка готовности агента + флаг моки      |
+
+## Быстрый запуск (3 терминала)
+
+### Терминал 1 — Python-агент
 
 ```bash
-# Клонирование репозитория
-git clone https://github.com/jodzhio/monorepo.git
-cd monorepo
+cd python_agent/hr_agent
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 
-# Установка зависимостей Go
+cp .env.example .env
+# Поправь .env: GIGACHAT_AUTH_KEY=<ключ>  (или оставь USE_MOCK=true)
+
+PYTHONIOENCODING=utf-8 python -m hr_agent.api_example
+# → http://localhost:5000
+```
+
+### Терминал 2 — Go-бэкенд
+
+```bash
+cd backend
 go mod download
+go run .
+# → http://localhost:8000
+```
 
-# Сборка
-go build -o server ./cmd/server/main.go
+Дефолты подобраны под `openapi.yaml`. Переопределить можно `backend/config.yaml`
+или переменными `SERVER_HOST`, `SERVER_PORT`, `PYTHON_AGENT_URL`.
 
-# Запуск
-./server
+### Терминал 3 — фронтенд
 
-Конфигурация
-Создайте config.yaml в корне проекта:
+```bash
+cd frontend
+npm install
+npm run dev
+# → http://localhost:5173
+```
 
-yaml
-server_host: "localhost"
-server_port: 8080
-llm_agent_url: "http://localhost:5000"  # URL Python агента
-Или используйте переменные окружения:
+Если бэкенд развёрнут не на `http://localhost:8000`, создайте `frontend/.env`:
 
-bash
-export PYTHON_AGENT_URL=http://localhost:5000
+```
+VITE_API_BASE_URL=https://my-backend.example.com/api
+```
+
+Откройте http://localhost:5173/apply — это форма кандидата.
+Главная http://localhost:5173/ — кабинет HR.
+
+## Дальше
+
+- Подробности по агенту, промптам, режиму mock/real → `python_agent/hr_agent/README.md`.
+- Подробности по UI, страницам и стилям → `frontend/README.md`.
+- Детали Go-сервера (как добавить эндпоинт, заменить storage) → `backend/README.md`.

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/jodzhio/monorepo/models"
+	"github.com/jodzhio/monorepo/backend/models"
 )
 
 // Storage - структура для хранения всех данных с мьютексами

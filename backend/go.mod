@@ -1,4 +1,4 @@
-module github.com/jodzhio/monorepo
+module github.com/jodzhio/monorepo/backend
 
 go 1.25.0
 

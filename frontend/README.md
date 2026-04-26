@@ -1,73 +1,77 @@
-# React + TypeScript + Vite
+# Frontend (React + Vite)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+UI для HR-панели и формы отклика кандидата. Часть монорепозитория
+([../README.md](../README.md)).
 
-Currently, two official plugins are available:
+## Стек
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React 19 + TypeScript
+- Vite (dev-сервер + сборка)
+- React Router 7
+- Tailwind CSS 3
+- Lucide React (иконки)
 
-## React Compiler
+## Структура
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+frontend/
+├── src/
+│   ├── api/client.ts      # обёртка над fetch + mock-фолбэки на случай оффлайна
+│   ├── types/api.ts       # TypeScript-типы под openapi.yaml
+│   ├── pages/             # ApplyPage (кандидат), DashboardPage / Candidates… (HR)
+│   ├── components/        # ApplicationForm, ChatScreen, ResultPage, ...
+│   ├── context/           # глобальные сторы
+│   └── data/              # моки HR-витрины
+├── index.html
+├── vite.config.ts
+├── tailwind.config.js
+└── package.json
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Запуск
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd frontend
+npm install
+npm run dev
+# → http://localhost:5173
 ```
+
+Доступные страницы:
+- `/` — дашборд HR.
+- `/candidates` — список кандидатов.
+- `/candidates/:id` — карточка кандидата.
+- `/apply` — форма отклика + AI-чат.
+
+## Конфигурация
+
+Один параметр — URL бэкенда. По умолчанию `http://localhost:8000/api`.
+
+Переопределить через `frontend/.env`:
+
+```
+VITE_API_BASE_URL=https://my-backend.example.com/api
+```
+
+## Сборка для прод
+
+```bash
+npm run build
+# артефакты → frontend/dist
+npm run preview         # локальный smoke-test собранного бандла
+```
+
+`dist/` можно скармливать любому статик-хостингу (Vercel / Netlify / Nginx).
+Не забудьте перенаправлять все 404 на `index.html` — иначе React Router
+ломается на прямых ссылках типа `/candidates/abc`.
+
+## Связь с бэкендом
+
+Все запросы идут через `src/api/client.ts`. Если бэкенд недоступен,
+клиент молча переключается на in-memory моки (`mockCreateCandidate` и
+друзья) — это сделано специально, чтобы UI можно было показать
+без подключения. На проде моки следует отключить (вырезать `try/catch`
+и блок «mock fallbacks»).
+
+Контракты в `src/types/api.ts` соответствуют `openapi.yaml`. При расхождении
+со схемой исправлять в трёх местах сразу: openapi → backend/models → этот файл.

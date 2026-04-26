@@ -10,7 +10,7 @@ info:
 
 servers:
   - url: http://localhost:8000/api
-    description: Локальный бэкенд (FastAPI / Express / Flask)
+    description: Локальный Go-бэкенд (см. backend/)
 
 paths:
   /candidates:

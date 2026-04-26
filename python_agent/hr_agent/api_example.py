@@ -53,16 +53,16 @@ app = Flask(__name__)
 def api_interview_start():
     data = request.get_json(force=True)
     profile = data.get("profile") or data
-    return jsonify(start_interview(profile))
+    return jsonify(start_interview(_normalize_profile(profile)))
 
 
 @app.post("/api/interview/next")
 def api_interview_next():
     data = request.get_json(force=True)
     return jsonify(next_question(
-        profile=data["profile"],
-        dialogue=data["dialogue"],
-        session_context=data["session_context"],
+        profile=_normalize_profile(data["profile"]),
+        dialogue=_dialogue_to_text(data["dialogue"]),
+        session_context=data.get("session_context") or {},
     ))
 
 
@@ -70,9 +70,42 @@ def api_interview_next():
 def api_interview_evaluate():
     data = request.get_json(force=True)
     return jsonify(evaluate_candidate(
-        profile=data["profile"],
-        dialogue=data["dialogue"],
+        profile=_normalize_profile(data["profile"]),
+        dialogue=_dialogue_to_text(data["dialogue"]),
     ))
+
+
+def _dialogue_to_text(dialogue) -> str:
+    """Принять диалог в любом формате и вернуть строку для prompt'ов.
+
+    Поддерживает:
+      - готовая строка (просто возвращаем);
+      - список реплик [{role, content}] от Go-бэкенда;
+      - список реплик [{role, text}] (debug-формат).
+    """
+    if isinstance(dialogue, str):
+        return dialogue
+    if not dialogue:
+        return ""
+    lines = []
+    for turn in dialogue:
+        role = str(turn.get("role", "")).lower()
+        content = turn.get("content") or turn.get("text") or ""
+        speaker = "HR" if role in {"hr", "assistant", "interviewer"} else "Кандидат"
+        if content:
+            lines.append(f"{speaker}: {content}")
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def _normalize_profile(profile: dict) -> dict:
+    """Подмазать поля профиля, которые приходят из Go: candidate_id вместо name,
+    resume_url вместо resume."""
+    if not profile:
+        return {}
+    out = dict(profile)
+    out.setdefault("name", profile.get("candidate_id") or "Кандидат")
+    out.setdefault("resume", profile.get("resume_url") or profile.get("about", ""))
+    return out
 
 
 # ---------- Batch режим (совместим с Go-бэкендом из backend/) ----------

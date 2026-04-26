@@ -3,7 +3,7 @@ package llm
 import (
 	"strings"
 
-	"github.com/jodzhio/monorepo/models"
+	"github.com/jodzhio/monorepo/backend/models"
 )
 
 // Agent определяет интерфейс для LLM агента
