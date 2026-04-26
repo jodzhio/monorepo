@@ -3,6 +3,18 @@ package models
 import "time"
 
 // Request/Response models (API)
+
+// QAPair для batch режима
+type QAPair struct {
+	Question string `json:"question"`
+	Answer   string `json:"answer"`
+}
+
+// DialogueTurn для итеративного режима
+type DialogueTurn struct {
+	Role    string `json:"role"` // "hr" или "candidate"
+	Content string `json:"content"`
+}
 type CandidateCreateRequest struct {
 	CandidateID string `json:"candidate_id,omitempty"`
 	Position    string `json:"position"` // "backend_go" и т.д.
