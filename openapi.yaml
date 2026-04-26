@@ -1,0 +1,277 @@
+openapi: 3.0.0
+info:
+  title: AI Screening API для Хакатона
+  description: |
+    Сервис первичного скрининга кандидатов.
+    — Базовая форма → создание кандидата и сессии диалога.
+    — Пошаговый чат с уточняющими вопросами.
+    — Финальный скоринг + рекомендация.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8000/api
+    description: Локальный бэкенд (FastAPI / Express / Flask)
+
+paths:
+  /candidates:
+    post:
+      summary: Создать кандидата (базовая форма + старт сессии)
+      operationId: createCandidate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CandidateCreateRequest'
+      responses:
+        '201':
+          description: Сессия диалога создана, возвращаются первые вопросы
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DialogStartResponse'
+        '400':
+          description: Ошибка валидации
+
+  /dialog/{session_id}/next:
+    get:
+      summary: Получить следующий вопрос (если диалог ещё не завершён)
+      operationId: getNextQuestion
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Идентификатор сессии, полученный при создании
+      responses:
+        '200':
+          description: Вопрос (или завершение диалога)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DialogQuestionResponse'
+        '404':
+          description: Сессия не найдена
+
+  /dialog/{session_id}/answer:
+    post:
+      summary: Отправить ответ пользователя на текущий вопрос
+      operationId: postAnswer
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnswerRequest'
+      responses:
+        '200':
+          description: Следующий вопрос (или сигнал о завершении опроса)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DialogQuestionResponse'
+        '400':
+          description: Некорректный question_id или диалог уже завершён
+        '404':
+          description: Сессия не найдена
+
+  /candidates/{candidate_id}/score:
+    get:
+      summary: Получить финальный скоринг (после завершения диалога)
+      operationId: getScore
+      parameters:
+        - name: candidate_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Скоринг, вердикт, трейты, таймер отклонения
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreResponse'
+        '202':
+          description: Диалог ещё не завершён, скоринга пока нет
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [analyzing, in_progress]
+                  message:
+                    type: string
+        '404':
+          description: Кандидат не найден
+
+components:
+  schemas:
+    # === ЗАПРОСЫ ===
+    CandidateCreateRequest:
+      type: object
+      required:
+        - position
+        - grade
+        - about
+        - education
+        - resume_url
+      properties:
+        candidate_id:
+          type: string
+          description: Опционально, если клиент хочет задать свой UUID. Иначе сервер сгенерирует.
+        position:
+          type: string
+          example: "GO разработчик"
+        grade:
+          type: string
+          enum: [Intern, Junior, Middle, Senior, Lead]
+          example: "Middle"
+        about:
+          type: string
+          description: "Немного о себе, ключевые достижения"
+          example: "3 года писал на Go, занимался высокими нагрузками"
+        education:
+          type: string
+          example: "МГТУ им. Баумана, Прикладная информатика, 2022"
+        resume_url:
+          type: string
+          format: uri
+          description: Ссылка на PDF или текстовый файл резюме (может быть пустой, если загружаете текст отдельно)
+          example: "https://example.com/resume.pdf"
+
+    AnswerRequest:
+      type: object
+      required:
+        - question_id
+        - answer
+      properties:
+        question_id:
+          type: integer
+          description: ID вопроса, на который отвечает пользователь
+          example: 1
+        answer:
+          type: string
+          description: Текст ответа
+          example: "Была гонка данных в кеше, использовал sync.Map"
+
+    # === ОТВЕТЫ ===
+    DialogStartResponse:
+      type: object
+      required:
+        - session_id
+        - status
+        - questions
+        - max_questions
+      properties:
+        session_id:
+          type: string
+          description: ID сессии диалога
+          example: "sess_12345"
+        status:
+          type: string
+          enum: [in_progress]
+        questions:
+          type: array
+          description: Первые вопросы (обычно 2 шт., чтобы сразу начать диалог)
+          items:
+            $ref: '#/components/schemas/QuestionItem'
+        max_questions:
+          type: integer
+          description: Общее число запланированных вопросов (чтобы пользователь знал прогресс)
+          example: 5
+
+    DialogQuestionResponse:
+      type: object
+      properties:
+        session_id:
+          type: string
+        question_id:
+          type: integer
+          description: ID текущего вопроса (если is_last=false, иначе null)
+          nullable: true
+        text:
+          type: string
+          description: Текст вопроса
+        is_last:
+          type: boolean
+          description: true – вопросы закончились, пора запрашивать скоринг
+        status:
+          type: string
+          enum: [in_progress, analyzing, completed]
+          description: analyzing – нейронка обрабатывает диалог; completed – можно получить score
+
+    QuestionItem:
+      type: object
+      required:
+        - question_id
+        - text
+      properties:
+        question_id:
+          type: integer
+        text:
+          type: string
+
+    ScoreResponse:
+      type: object
+      required:
+        - candidate_id
+        - score
+        - score_percent
+        - verdict
+        - recommendation
+        - traits
+        - status
+      properties:
+        candidate_id:
+          type: string
+          format: uuid
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          example: 0.78
+        score_percent:
+          type: integer
+          example: 78
+        verdict:
+          type: string
+          enum: [recommend_to_interview, soft_reject_timer]
+        recommendation:
+          type: string
+          description: Текстовое пояснение решения
+          example: "Сильный опыт на Go, конкурентность знает. Пригласить на техсобеседование."
+        traits:
+          type: object
+          properties:
+            positive:
+              type: array
+              items:
+                type: string
+            negative:
+              type: array
+              items:
+                type: string
+        rejection_timer_days:
+          type: integer
+          nullable: true
+          description: Если verdict=soft_reject_timer, через сколько дней отправить уведомление об отказе
+          example: 14
+        rejection_message_template:
+          type: string
+          nullable: true
+          description: Шаблон сообщения для отказа
+        status:
+          type: string
+          enum: [approved, pending_rejection]
