@@ -1,0 +1,32 @@
+{
+  "candidateName": "Ivan Petrov",
+  "role": "Middle Python Developer",
+  "score": 78,
+  "scoreNormalized": 0.78,
+  "status": "Recommended",
+  "summary": "Кандидат имеет 3 года релевантного backend-опыта на Python в высоконагруженных проектах, демонстрирует системное мышление и владеет почти всем требуемым стеком.",
+  "strengths": [
+    "3 года продуктового опыта на FastAPI и PostgreSQL под нагрузкой 5к RPS",
+    "Опыт работы с Kubernetes и Yandex Cloud",
+    "Системный подход к инцидентам — нашёл и закрыл утечку соединений через метрики"
+  ],
+  "risks": [
+    "Не работал с AWS, только с Yandex Cloud",
+    "Английский A2 — может быть проблемой для общения с зарубежными вендорами"
+  ],
+  "requirementsMatch": [
+    {"requirement": "Python 3+ years", "status": "found", "evidence": "3 года в Wildberries и Тинькофф"},
+    {"requirement": "PostgreSQL", "status": "found", "evidence": "Использовался в основном проекте"},
+    {"requirement": "AWS", "status": "missing", "evidence": "Кандидат прямо сказал, что работал только с Yandex Cloud"},
+    {"requirement": "Высокая нагрузка", "status": "found", "evidence": "5к RPS в production"},
+    {"requirement": "English B2+", "status": "unclear", "evidence": "Назвал A2, но читает документацию"}
+  ],
+  "interviewQuestions": [
+    "Расскажите про опыт миграции монолита на микросервисы.",
+    "Готовы ли пройти курс по AWS перед стартом?"
+  ],
+  "recommendation": {
+    "shouldInvite": true,
+    "reason": "Кандидат закрывает 4 из 5 ключевых требований, пробел по AWS закрывается обучением, готовность учиться подтверждена."
+  }
+}

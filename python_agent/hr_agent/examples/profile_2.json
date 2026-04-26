@@ -1,0 +1,8 @@
+{
+  "name": "Анна Смирнова",
+  "position": "Go-разработчик",
+  "grade": "Senior",
+  "about": "Senior Go-разработчик, 6 лет коммерческого опыта в финтехе и e-commerce. Тимлид команды из 4 человек последние 2 года.",
+  "education": "СПбГУ, Прикладная математика, 2018",
+  "resume": "Опыт работы:\n— Яндекс.Маркет, Senior Go Developer / Tech Lead (2022–2025): рекомендательный сервис на Go, нагрузка 80к RPS. Архитектура, ревью, найм.\n— Райффайзенбанк, Go Developer (2020–2022): платёжный шлюз, gRPC, Kafka.\n— Mail.ru, Backend Developer (2018–2020): Python → Go миграция.\n\nСтек: Go (5+ лет), gRPC, Kafka, PostgreSQL, ClickHouse, Kubernetes, Yandex Cloud, Prometheus/Grafana.\nАнглийский B2 (читаю спецификации, участвую в международных созвонах).\nДоклады на GoLang Russia, GopherCon."
+}

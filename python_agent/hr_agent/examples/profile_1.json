@@ -1,0 +1,8 @@
+{
+  "name": "Иван Петров",
+  "position": "Python-разработчик",
+  "grade": "Middle",
+  "about": "Бэкенд-разработчик с 3 годами опыта. Делал высоконагруженные сервисы доставки и биллинг. Люблю чистый код и тесты.",
+  "education": "МГТУ им. Баумана, ИУ-7, 2021",
+  "resume": "Опыт работы:\n— Wildberries, Backend Developer (2022–2024): сервис доставки на FastAPI, PostgreSQL, Redis. Нагрузка 5к RPS, команда 6 человек.\n— Тинькофф, Junior Python Developer (2021–2022): внутренние инструменты на Django.\n\nСтек: Python, FastAPI, Django, PostgreSQL, Redis, Docker, GitLab CI, Kafka.\nХобби: open-source библиотеки для async-логирования."
+}

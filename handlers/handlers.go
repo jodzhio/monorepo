@@ -1,3 +1,4 @@
+// internal/handlers/handlers.go
 package handlers
 
 import (
@@ -12,14 +13,12 @@ import (
 	"github.com/jodzhio/monorepo/utils"
 )
 
-// Handler - основной обработчик с зависимостями
 type Handler struct {
 	storage  *storage.Storage
-	llmAgent llm.Agent
+	llmAgent *llm.PythonAgentClient
 }
 
-// NewHandler создает новый обработчик
-func NewHandler(storage *storage.Storage, llmAgent llm.Agent) *Handler {
+func NewHandler(storage *storage.Storage, llmAgent *llm.PythonAgentClient) *Handler {
 	return &Handler{
 		storage:  storage,
 		llmAgent: llmAgent,
@@ -39,13 +38,13 @@ func (h *Handler) CreateCandidateHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Валидация обязательных полей
+	// Валидация
 	if req.Position == "" || req.Grade == "" || req.About == "" {
 		http.Error(w, "Missing required fields: position, grade, about", http.StatusBadRequest)
 		return
 	}
 
-	// Генерация ID для кандидата
+	// Генерация ID
 	candidateID := req.CandidateID
 	if candidateID == "" {
 		candidateID = utils.GenerateID("cand")
@@ -67,8 +66,12 @@ func (h *Handler) CreateCandidateHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Получаем вопросы для кандидата
-	questions := h.llmAgent.GetQuestions(req.Position, req.Grade)
+	// Запускаем интервью в Python агенте
+	startResp, err := h.llmAgent.StartInterview(*candidate)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to start interview: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	// Создаем сессию
 	sessionID := utils.GenerateID("sess")
@@ -77,8 +80,13 @@ func (h *Handler) CreateCandidateHandler(w http.ResponseWriter, r *http.Request)
 		CandidateID:        candidateID,
 		CurrentQuestionIdx: 0,
 		Answers:            []models.Answer{},
-		Status:             "in_progress",
-		CreatedAt:          time.Now(),
+		Dialogue: []models.DialogueTurn{
+			{Role: "hr", Content: startResp.Greeting},
+			{Role: "hr", Content: startResp.FirstQuestion},
+		},
+		SessionContext: startResp.SessionContext,
+		Status:         "in_progress",
+		CreatedAt:      time.Now(),
 	}
 
 	if err := h.storage.CreateSession(session); err != nil {
@@ -86,26 +94,14 @@ func (h *Handler) CreateCandidateHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Формируем ответ с первым вопросом (или двумя первыми вопросами)
-	questionItems := []models.QuestionItem{}
-	if len(questions) > 0 {
-		questionItems = append(questionItems, models.QuestionItem{
-			ID:   questions[0].ID,
-			Text: questions[0].Text,
-		})
-	}
-	if len(questions) > 1 {
-		questionItems = append(questionItems, models.QuestionItem{
-			ID:   questions[1].ID,
-			Text: questions[1].Text,
-		})
-	}
-
+	// Формируем ответ (совместимый с OpenAPI)
 	response := models.DialogStartResponse{
-		SessionID:    sessionID,
-		Status:       "in_progress",
-		Questions:    questionItems,
-		MaxQuestions: len(questions),
+		SessionID: sessionID,
+		Status:    "in_progress",
+		Questions: []models.QuestionItem{
+			{ID: 1, Text: startResp.FirstQuestion},
+		},
+		MaxQuestions: 0, // неизвестно, будет определяться динамически
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -120,30 +116,18 @@ func (h *Handler) GetNextQuestionHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Извлекаем session_id из URL
 	sessionID := utils.ExtractSessionID(r.URL.Path)
 	if sessionID == "" {
 		http.Error(w, "Invalid session ID", http.StatusBadRequest)
 		return
 	}
 
-	// Получаем сессию
 	session, err := h.storage.GetSession(sessionID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	// Получаем вопросы для кандидата
-	candidate, err := h.storage.GetCandidate(session.CandidateID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
-	questions := h.llmAgent.GetQuestions(candidate.Position, candidate.Grade)
-
-	// Проверяем статус сессии
 	if session.Status != "in_progress" {
 		response := models.DialogQuestionResponse{
 			IsLast: true,
@@ -154,23 +138,24 @@ func (h *Handler) GetNextQuestionHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Если все вопросы заданы
-	if session.CurrentQuestionIdx >= len(questions) {
+	// Если диалог пустой или закончился
+	if len(session.Dialogue) == 0 {
 		response := models.DialogQuestionResponse{
 			IsLast: true,
-			Status: session.Status,
+			Status: "completed",
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 		return
 	}
 
-	// Возвращаем текущий вопрос
-	currentQuestion := questions[session.CurrentQuestionIdx]
+	// Берем последний вопрос из диалога
+	lastTurn := session.Dialogue[len(session.Dialogue)-1]
+
 	response := models.DialogQuestionResponse{
-		QuestionID: currentQuestion.ID,
-		Text:       currentQuestion.Text,
-		IsLast:     session.CurrentQuestionIdx == len(questions)-1,
+		QuestionID: session.CurrentQuestionIdx + 1,
+		Text:       lastTurn.Content,
+		IsLast:     false,
 		Status:     session.Status,
 	}
 
@@ -185,87 +170,73 @@ func (h *Handler) PostAnswerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Извлекаем session_id из URL
 	sessionID := utils.ExtractSessionID(r.URL.Path)
 	if sessionID == "" {
 		http.Error(w, "Invalid session ID", http.StatusBadRequest)
 		return
 	}
 
-	// Парсим тело запроса
 	var req models.AnswerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Получаем сессию
 	session, err := h.storage.GetSession(sessionID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	// Получаем вопросы
+	if session.Status != "in_progress" {
+		http.Error(w, "Session is already completed", http.StatusBadRequest)
+		return
+	}
+
+	// Получаем кандидата
 	candidate, err := h.storage.GetCandidate(session.CandidateID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	questions := h.llmAgent.GetQuestions(candidate.Position, candidate.Grade)
+	// Добавляем ответ кандидата в диалог
+	session.Dialogue = append(session.Dialogue, models.DialogueTurn{
+		Role:    "candidate",
+		Content: req.AnswerText,
+	})
 
-	// Проверяем, что сессия активна
-	if session.Status != "in_progress" {
-		http.Error(w, "Session is already completed", http.StatusBadRequest)
-		return
-	}
-
-	// Проверяем, что вопрос существует
-	if session.CurrentQuestionIdx >= len(questions) {
-		http.Error(w, "All questions already answered", http.StatusBadRequest)
-		return
-	}
-
-	// Проверяем соответствие question_id
-	expectedQuestion := questions[session.CurrentQuestionIdx]
-	if req.QuestionID != expectedQuestion.ID {
-		http.Error(w, fmt.Sprintf("Invalid question_id. Expected %d, got %d",
-			expectedQuestion.ID, req.QuestionID), http.StatusBadRequest)
-		return
-	}
-
-	// Сохраняем ответ
+	// Сохраняем ответ в историю
 	answer := models.Answer{
 		QuestionID:   req.QuestionID,
-		QuestionText: expectedQuestion.Text,
+		QuestionText: session.Dialogue[len(session.Dialogue)-2].Content, // предыдущий вопрос
 		AnswerText:   req.AnswerText,
 		AnsweredAt:   time.Now(),
 	}
+	session.Answers = append(session.Answers, answer)
 
-	if err := h.storage.AddAnswerToSession(sessionID, answer); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// Запрашиваем следующий вопрос у агента
+	nextResp, err := h.llmAgent.NextQuestion(*candidate, session.Dialogue, session.SessionContext)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get next question: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Увеличиваем индекс вопроса
-	session.CurrentQuestionIdx++
+	// Обновляем контекст сессии
+	session.SessionContext = nextResp.SessionContext
 
-	// Проверяем, все ли вопросы отвечены
-	if session.CurrentQuestionIdx >= len(questions) {
-		// Все вопросы отвечены - завершаем сессию
+	// Проверяем, завершено ли интервью
+	if nextResp.IsFinished {
 		session.Status = "completed"
-
-		// Рассчитываем скоринг
-		score := h.llmAgent.CalculateScore(*candidate, session.Answers)
-		session.Score = score
+		if nextResp.FinalReport != nil {
+			session.Score = *nextResp.FinalReport
+		}
 
 		if err := h.storage.UpdateSession(session); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// Возвращаем ответ о завершении
 		response := models.DialogQuestionResponse{
 			IsLast: true,
 			Status: "completed",
@@ -275,18 +246,23 @@ func (h *Handler) PostAnswerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Обновляем сессию
+	// Добавляем следующий вопрос от HR в диалог
+	session.Dialogue = append(session.Dialogue, models.DialogueTurn{
+		Role:    "hr",
+		Content: nextResp.Question,
+	})
+	session.CurrentQuestionIdx++
+
 	if err := h.storage.UpdateSession(session); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Возвращаем следующий вопрос
-	nextQuestion := questions[session.CurrentQuestionIdx]
 	response := models.DialogQuestionResponse{
-		QuestionID: nextQuestion.ID,
-		Text:       nextQuestion.Text,
-		IsLast:     session.CurrentQuestionIdx == len(questions)-1,
+		QuestionID: session.CurrentQuestionIdx + 1,
+		Text:       nextResp.Question,
+		IsLast:     false,
 		Status:     session.Status,
 	}
 
@@ -302,28 +278,24 @@ func (h *Handler) GetScoreHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Извлекаем candidate_id из URL
 	candidateID := utils.ExtractCandidateID(r.URL.Path)
 	if candidateID == "" {
 		http.Error(w, "Invalid candidate ID", http.StatusBadRequest)
 		return
 	}
 
-	// Проверяем существование кандидата
 	_, err := h.storage.GetCandidate(candidateID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	// Получаем сессию кандидата
 	session, err := h.storage.GetSessionByCandidateID(candidateID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	// Если сессия еще не завершена
 	if session.Status == "in_progress" {
 		w.WriteHeader(http.StatusAccepted)
 		response := map[string]interface{}{
@@ -334,7 +306,6 @@ func (h *Handler) GetScoreHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Если скоринг готов
 	if session.Status == "completed" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -342,7 +313,6 @@ func (h *Handler) GetScoreHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Если в процессе анализа
 	w.WriteHeader(http.StatusAccepted)
 	response := map[string]interface{}{
 		"status":  "analyzing",

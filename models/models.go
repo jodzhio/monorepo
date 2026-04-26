@@ -75,12 +75,15 @@ type Candidate struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// internal/models/models.go - добавь в структуру Session
 type Session struct {
 	SessionID          string
 	CandidateID        string
 	CurrentQuestionIdx int
 	Answers            []Answer
-	Status             string // "in_progress", "analyzing", "completed"
+	Dialogue           []DialogueTurn         `json:"dialogue"`        // история диалога
+	SessionContext     map[string]interface{} `json:"session_context"` // контекст от агента
+	Status             string                 // "in_progress", "completed"
 	Score              ScoreResponse
 	CreatedAt          time.Time
 }

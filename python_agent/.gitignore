@@ -1,0 +1,35 @@
+# Секреты — НЕ коммитить
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual envs
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Тестовые файлы
+test_resume.*
+*.tmp
+
+# Go-бэкенд хранится локально, не в этом репо.
+# Бэкендер ведёт его в своём репозитории: github.com/jodzhio/monorepo
+backend/
