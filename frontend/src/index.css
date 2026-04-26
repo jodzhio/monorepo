@@ -1,0 +1,191 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CSS design tokens ──────────────────────────────────────────────────────
+   Changing these in .theme-light re-skins every component automatically.
+   ─────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* Page background gradient */
+  --page-bg: linear-gradient(180deg, #2e2851 0%, #121137 100%);
+
+  /* Ink (text) — light on dark background */
+  --color-ink: #ebe7fa;
+  --color-ink-muted: rgba(235, 231, 250, 0.68);
+  --color-ink-soft: rgba(235, 231, 250, 0.48);
+
+  /* Surface fallback for non-glass elements */
+  --color-bg-surface: rgba(255, 255, 255, 0.07);
+
+  /* Glass card */
+  --card-bg: rgba(255, 255, 255, 0.09);
+  --card-border: rgba(255, 255, 255, 0.18);
+  --card-shadow: 0 12px 30px rgba(0, 0, 0, 0.20),
+                 0 1px 0 rgba(255, 255, 255, 0.14) inset;
+
+  /* Buttons */
+  --btn-secondary-bg: rgba(255, 255, 255, 0.09);
+  --btn-secondary-border: rgba(255, 255, 255, 0.18);
+  --btn-secondary-color: #ebe7fa;
+  --btn-ghost-hover: rgba(255, 255, 255, 0.09);
+
+  /* Stat chip tones (VacancyCard) */
+  --chip-accent-bg: rgba(170, 220, 0, 0.14);
+  --chip-accent-fg: #d6ff1d;
+  --chip-success-bg: rgba(30, 91, 40, 0.30);
+  --chip-success-fg: #bceba0;
+  --chip-warning-bg: rgba(224, 168, 0, 0.18);
+  --chip-warning-fg: #ffd86a;
+  --chip-default-bg: rgba(255, 255, 255, 0.06);
+}
+
+.theme-light {
+  /* Page background gradient */
+  --page-bg: linear-gradient(155deg, #ede9ff 0%, #f4fff0 55%, #e6f2ff 100%);
+
+  /* Ink (text) — dark on light background */
+  --color-ink: #2b264a;
+  --color-ink-muted: rgba(43, 38, 74, 0.65);
+  --color-ink-soft: rgba(43, 38, 74, 0.42);
+
+  /* Surface fallback */
+  --color-bg-surface: rgba(43, 38, 74, 0.05);
+
+  /* Glass card — frosted white */
+  --card-bg: rgba(255, 255, 255, 0.66);
+  --card-border: rgba(255, 255, 255, 0.72);
+  --card-shadow: 0 8px 32px rgba(43, 38, 74, 0.09),
+                 0 1px 0 rgba(255, 255, 255, 0.95) inset;
+
+  /* Buttons */
+  --btn-secondary-bg: rgba(43, 38, 74, 0.06);
+  --btn-secondary-border: rgba(43, 38, 74, 0.14);
+  --btn-secondary-color: #2b264a;
+  --btn-ghost-hover: rgba(43, 38, 74, 0.07);
+
+  /* Stat chip tones (VacancyCard) */
+  --chip-accent-bg: rgba(120, 180, 0, 0.14);
+  --chip-accent-fg: #3a5c00;
+  --chip-success-bg: rgba(30, 91, 40, 0.12);
+  --chip-success-fg: #1e5b28;
+  --chip-warning-bg: rgba(224, 168, 0, 0.16);
+  --chip-warning-fg: #7a5500;
+  --chip-default-bg: rgba(43, 38, 74, 0.06);
+}
+
+@layer base {
+  html {
+    background: var(--page-bg) fixed;
+    min-height: 100%;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100dvh;
+  }
+
+  body {
+    @apply font-sans antialiased;
+    background: transparent;
+    color: var(--color-ink);
+    font-feature-settings: "cv11", "ss01", "ss03";
+  }
+
+  button {
+    @apply select-none;
+  }
+}
+
+@layer components {
+  /* ── Glass card ── token-driven, adapts to light / dark context */
+  .card {
+    @apply rounded-3xl;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    box-shadow: var(--card-shadow);
+    color: var(--color-ink);
+  }
+
+  .card-strong {
+    @apply rounded-3xl;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    -webkit-backdrop-filter: blur(22px);
+    backdrop-filter: blur(22px);
+    box-shadow: var(--card-shadow);
+    color: var(--color-ink);
+  }
+  .theme-light .card-strong {
+    background: rgba(255, 255, 255, 0.82);
+    border-color: rgba(255, 255, 255, 0.78);
+  }
+
+  /* Pill / badge */
+  .pill {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+
+  /* Primary button — lime accent, works on both themes */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-trust shadow-sm transition active:scale-[.98] hover:bg-accent-dark disabled:opacity-50 disabled:pointer-events-none;
+    min-height: 44px;
+  }
+
+  /* Secondary button — token-driven glass */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold transition active:scale-[.98] disabled:opacity-50 disabled:pointer-events-none;
+    min-height: 44px;
+    background: var(--btn-secondary-bg);
+    border: 1px solid var(--btn-secondary-border);
+    color: var(--btn-secondary-color);
+  }
+  .btn-secondary:hover {
+    background: var(--btn-secondary-bg);
+    filter: brightness(1.12);
+  }
+
+  /* Ghost button */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition;
+    min-height: 36px;
+    color: var(--color-ink-muted);
+  }
+  .btn-ghost:hover {
+    background: var(--btn-ghost-hover);
+    color: var(--color-ink);
+  }
+
+  /* Form input — always white with trust-dark text */
+  .input {
+    @apply w-full rounded-2xl border bg-white px-4 py-3 text-sm text-trust placeholder:text-trust-muted outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30;
+    border-color: rgba(43, 38, 74, 0.16);
+    min-height: 44px;
+  }
+  /* Slightly stronger shadow on light page to lift inputs */
+  .theme-light .input {
+    box-shadow: 0 2px 8px rgba(43, 38, 74, 0.06);
+  }
+
+  /* Label */
+  .label {
+    @apply mb-1.5 block text-xs font-medium uppercase tracking-wide;
+    color: var(--color-ink-muted);
+  }
+
+  /* Generic surface chip — replaces bg-bg for non-card surfaces */
+  .surface-chip {
+    @apply rounded-xl px-2 py-1.5;
+    background: var(--color-bg-surface);
+  }
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: rgba(235,231,250,0.16); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(235,231,250,0.28); }
+.theme-light ::-webkit-scrollbar-thumb { background: rgba(43,38,74,0.12); }
+.theme-light ::-webkit-scrollbar-thumb:hover { background: rgba(43,38,74,0.22); }

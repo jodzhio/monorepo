@@ -1,0 +1,67 @@
+import type { Vacancy } from "../types/dashboard";
+
+export const mockVacancies: Vacancy[] = [
+  {
+    id: "vac_go_mid",
+    title: "Go-разработчик",
+    grade: "Middle",
+    department: "Backend",
+    candidatesCount: 24,
+    averageScore: 71,
+    recommendedCount: 8,
+    needReviewCount: 10,
+    pendingRejectionCount: 6,
+    commonGaps: [
+      "Опыт с конкурентностью часто неочевиден в резюме",
+      "Часто отсутствует опыт с gRPC",
+      "Слабые примеры работы под нагрузкой",
+    ],
+  },
+  {
+    id: "vac_data_sr",
+    title: "Дата-инженер (Senior)",
+    grade: "Senior",
+    department: "Data Platform",
+    candidatesCount: 17,
+    averageScore: 68,
+    recommendedCount: 4,
+    needReviewCount: 9,
+    pendingRejectionCount: 4,
+    commonGaps: [
+      "Ограниченные знания оптимизации Spark",
+      "Мало кандидатов реально владели пайплайнами",
+      "Редко упоминается мониторинг качества данных",
+    ],
+  },
+  {
+    id: "vac_pm_jr",
+    title: "Продукт-менеджер",
+    grade: "Junior",
+    department: "Retail Tech",
+    candidatesCount: 31,
+    averageScore: 64,
+    recommendedCount: 6,
+    needReviewCount: 16,
+    pendingRejectionCount: 9,
+    commonGaps: [
+      "Слабые количественные результаты в прошлых проектах",
+      "Discovery-процесс редко структурирован",
+      "Размытые примеры работы со стейкхолдерами",
+    ],
+  },
+  {
+    id: "vac_qa_mid",
+    title: "QA Automation",
+    grade: "Middle",
+    department: "Качество",
+    candidatesCount: 12,
+    averageScore: 73,
+    recommendedCount: 5,
+    needReviewCount: 4,
+    pendingRejectionCount: 3,
+    commonGaps: [
+      "Редко упоминается контрактное тестирование API",
+      "Поверхностные знания параллелизации в CI",
+    ],
+  },
+];
