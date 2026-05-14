@@ -1,0 +1,19 @@
+[Unit]
+Description=HR67 Go backend
+After=network.target hr67-agent.service
+Requires=hr67-agent.service
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO__/backend
+Environment=SERVER_HOST=127.0.0.1
+Environment=SERVER_PORT=8000
+Environment=PYTHON_AGENT_URL=http://127.0.0.1:5000
+ExecStart=/usr/local/bin/hr67-backend
+Restart=always
+RestartSec=3
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target

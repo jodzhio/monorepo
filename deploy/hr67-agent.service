@@ -1,0 +1,17 @@
+[Unit]
+Description=HR67 Python agent (Flask + GigaChat)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO__/python_agent/hr_agent
+EnvironmentFile=__REPO__/python_agent/hr_agent/.env
+Environment=PYTHONIOENCODING=utf-8
+ExecStart=__REPO__/python_agent/hr_agent/.venv/bin/python -m hr_agent.api_example
+Restart=always
+RestartSec=3
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
